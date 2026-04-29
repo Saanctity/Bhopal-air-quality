@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bhopal Air Quality Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0a0f1e; color: #e0e6f0; min-height: 100vh; }
+
+  header {
+    background: linear-gradient(135deg, #0d1f3c, #1a3a5c);
+    padding: 28px 40px;
+    border-bottom: 1px solid #1e3a5f;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  header h1 { font-size: 1.6rem; font-weight: 700; color: #7ec8e3; letter-spacing: 1px; }
+  header p { font-size: 0.85rem; color: #7a9bb5; margin-top: 4px; }
+  .live-badge {
+    background: #1a3a2a; border: 1px solid #2ecc71; color: #2ecc71;
+    padding: 6px 14px; border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .live-dot { width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  .container { max-width: 1300px; margin: 0 auto; padding: 30px 24px; }
+
+  /* AQI Hero */
+  .aqi-hero {
+    background: linear-gradient(135deg, #1a2a4a, #0f1f35);
+    border: 1px solid #1e3a5f;
+    border-radius: 16px; padding: 36px 40px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 30px; margin-bottom: 28px;
+  }
+  .aqi-main { text-align: center; }
+  .aqi-number { font-size: 5rem; font-weight: 800; color: #f39c12; line-height: 1; }
+  .aqi-label { font-size: 1.1rem; color: #f39c12; font-weight: 600; margin-top: 6px; }
+  .aqi-sub { font-size: 0.82rem; color: #7a9bb5; margin-top: 4px; }
+
+  .aqi-context { display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+  .context-item { background: #0d1f3c; border-radius: 10px; padding: 14px 18px; border-left: 3px solid #2e75b6; }
+  .context-item .label { font-size: 0.75rem; color: #7a9bb5; text-transform: uppercase; letter-spacing: 0.5px; }
+  .context-item .value { font-size: 1.1rem; font-weight: 600; color: #e0e6f0; margin-top: 3px; }
+
+  .aqi-scale { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .scale-bar { display: flex; align-items: center; gap: 10px; }
+  .scale-color { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+  .scale-text { font-size: 0.8rem; color: #7a9bb5; }
+  .scale-text span { color: #e0e6f0; font-weight: 500; }
+  .scale-bar.active .scale-text { color: #f39c12; font-weight: 600; }
+  .scale-bar.active .scale-text span { color: #f39c12; }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+
+  .card {
+    background: linear-gradient(135deg, #1a2a4a, #0f1f35);
+    border: 1px solid #1e3a5f; border-radius: 14px; padding: 24px;
+  }
+  .card-title { font-size: 0.85rem; color: #7a9bb5; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 18px; font-weight: 600; }
+
+  /* Pollutant cards */
+  .pollutant-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  .pollutant-card {
+    background: #0d1f3c; border: 1px solid #1e3a5f;
+    border-radius: 12px; padding: 18px; text-align: center;
+    transition: transform 0.2s;
+  }
+  .pollutant-card:hover { transform: translateY(-3px); }
+  .pollutant-name { font-size: 0.78rem; color: #7a9bb5; margin-bottom: 8px; }
+  .pollutant-value { font-size: 1.8rem; font-weight: 700; }
+  .pollutant-unit { font-size: 0.72rem; color: #7a9bb5; margin-top: 4px; }
+  .pollutant-bar { height: 4px; border-radius: 2px; margin-top: 12px; background: #1e3a5f; overflow: hidden; }
+  .pollutant-fill { height: 100%; border-radius: 2px; transition: width 1s ease; }
+
+  /* Health section */
+  .health-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .health-item { background: #0d1f3c; border-radius: 10px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px; }
+  .health-icon { font-size: 1.4rem; flex-shrink: 0; }
+  .health-text { font-size: 0.82rem; color: #a0b8cc; line-height: 1.5; }
+  .health-text strong { color: #e0e6f0; display: block; margin-bottom: 3px; }
+
+  /* Trend table */
+  .trend-table { width: 100%; border-collapse: collapse; }
+  .trend-table th { font-size: 0.75rem; color: #7a9bb5; text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e3a5f; text-transform: uppercase; letter-spacing: 0.5px; }
+  .trend-table td { font-size: 0.85rem; padding: 12px; border-bottom: 1px solid #0d1f3c; }
+  .trend-table tr:last-child td { border-bottom: none; }
+  .trend-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+
+  /* Station comparison */
+  .station-item { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid #0d1f3c; }
+  .station-item:last-child { border-bottom: none; }
+  .station-name { font-size: 0.85rem; color: #e0e6f0; width: 160px; flex-shrink: 0; }
+  .station-bar-wrap { flex: 1; background: #0d1f3c; border-radius: 4px; height: 8px; overflow: hidden; }
+  .station-bar { height: 100%; border-radius: 4px; }
+  .station-aqi { font-size: 0.85rem; font-weight: 600; width: 40px; text-align: right; }
+
+  /* Source note */
+  .source-note { font-size: 0.75rem; color: #4a6a85; text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #1e3a5f; }
+
+  canvas { max-height: 240px; }
+
+  @media(max-width: 768px) {
+    .aqi-hero { grid-template-columns: 1fr; }
+    .grid-2, .grid-3, .pollutant-grid { grid-template-columns: 1fr; }
+    .health-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🌿 Bhopal Air Quality Dashboard</h1>
+    <p>Environmental Data Analysis · Madhya Pradesh, India</p>
+  </div>
+  <div class="live-badge">
+    <div class="live-dot"></div>
+    Updated April 2026
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- AQI Hero -->
+  <div class="aqi-hero">
+    <div class="aqi-main">
+      <div style="font-size:0.85rem;color:#7a9bb5;margin-bottom:10px;">CURRENT AQI (US Standard)</div>
+      <div class="aqi-number">132</div>
+      <div class="aqi-label">⚠️ Unhealthy for Sensitive Groups</div>
+      <div class="aqi-sub">Primary Pollutant: PM10</div>
+      <div style="margin-top:16px;font-size:0.8rem;color:#7a9bb5;">
+        PM2.5 is <strong style="color:#f39c12;">7.4×</strong> WHO annual guideline value
+      </div>
+    </div>
+
+    <div class="aqi-context">
+      <div class="context-item">
+        <div class="label">Global Rank</div>
+        <div class="value">#239 Most Polluted City</div>
+      </div>
+      <div class="context-item">
+        <div class="label">Cigarette Equivalent</div>
+        <div class="value">1.4 cigarettes/day</div>
+      </div>
+      <div class="context-item">
+        <div class="label">Annual AQI Trend</div>
+        <div class="value" style="color:#e74c3c;">↑ Rising since 2020</div>
+      </div>
+      <div class="context-item">
+        <div class="label">Worst Season</div>
+        <div class="value">Diwali → AQI 300+</div>
+      </div>
+    </div>
+
+    <div class="aqi-scale">
+      <div style="font-size:0.78rem;color:#7a9bb5;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">AQI Scale</div>
+      <div class="scale-bar"><div class="scale-color" style="background:#2ecc71"></div><div class="scale-text"><span>0–50</span> Good</div></div>
+      <div class="scale-bar"><div class="scale-color" style="background:#f1c40f"></div><div class="scale-text"><span>51–100</span> Moderate</div></div>
+      <div class="scale-bar active"><div class="scale-color" style="background:#f39c12"></div><div class="scale-text"><span>101–150</span> ← Bhopal Now</div></div>
+      <div class="scale-bar"><div class="scale-color" style="background:#e74c3c"></div><div class="scale-text"><span>151–200</span> Unhealthy</div></div>
+      <div class="scale-bar"><div class="scale-color" style="background:#8e44ad"></div><div class="scale-text"><span>201–300</span> Very Unhealthy</div></div>
+      <div class="scale-bar"><div class="scale-color" style="background:#7f1d1d"></div><div class="scale-text"><span>301+</span> Hazardous</div></div>
+    </div>
+  </div>
+
+  <!-- Pollutants -->
+  <div style="font-size:0.85rem;color:#7a9bb5;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:14px;font-weight:600;">Current Pollutant Levels</div>
+  <div class="pollutant-grid">
+    <div class="pollutant-card">
+      <div class="pollutant-name">PM2.5 (Fine Particles)</div>
+      <div class="pollutant-value" style="color:#e74c3c;">17</div>
+      <div class="pollutant-unit">µg/m³ · WHO limit: 5</div>
+      <div class="pollutant-bar"><div class="pollutant-fill" style="width:68%;background:#e74c3c;"></div></div>
+    </div>
+    <div class="pollutant-card">
+      <div class="pollutant-name">PM10 (Coarse Particles)</div>
+      <div class="pollutant-value" style="color:#f39c12;">24</div>
+      <div class="pollutant-unit">µg/m³ · WHO limit: 15</div>
+      <div class="pollutant-bar"><div class="pollutant-fill" style="width:55%;background:#f39c12;"></div></div>
+    </div>
+    <div class="pollutant-card">
+      <div class="pollutant-name">Ozone O₃</div>
+      <div class="pollutant-value" style="color:#f1c40f;">47</div>
+      <div class="pollutant-unit">ppb · Moderate</div>
+      <div class="pollutant-bar"><div class="pollutant-fill" style="width:42%;background:#f1c40f;"></div></div>
+    </div>
+    <div class="pollutant-card">
+      <div class="pollutant-name">Nitrogen Dioxide NO₂</div>
+      <div class="pollutant-value" style="color:#3498db;">20</div>
+      <div class="pollutant-unit">ppb · Acceptable</div>
+      <div class="pollutant-bar"><div class="pollutant-fill" style="width:30%;background:#3498db;"></div></div>
+    </div>
+    <div class="pollutant-card">
+      <div class="pollutant-name">Sulfur Dioxide SO₂</div>
+      <div class="pollutant-value" style="color:#2ecc71;">7</div>
+      <div class="pollutant-unit">ppb · Good</div>
+      <div class="pollutant-bar"><div class="pollutant-fill" style="width:15%;background:#2ecc71;"></div></div>
+    </div>
+    <div class="pollutant-card">
+      <div class="pollutant-name">Carbon Monoxide CO</div>
+      <div class="pollutant-value" style="color:#2ecc71;">360</div>
+      <div class="pollutant-unit">ppb · Safe Range</div>
+      <div class="pollutant-bar"><div class="pollutant-fill" style="width:20%;background:#2ecc71;"></div></div>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Annual AQI Trend — Bhopal (2020–2024)</div>
+      <canvas id="trendChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">Monthly AQI Pattern (Seasonal)</div>
+      <canvas id="monthlyChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Station Comparison + Pie -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Monitoring Stations — AQI Comparison</div>
+      <div style="margin-top:8px;">
+        <div class="station-item">
+          <div class="station-name">Paryavaran Parisar</div>
+          <div class="station-bar-wrap"><div class="station-bar" style="width:90%;background:#e74c3c;"></div></div>
+          <div class="station-aqi" style="color:#e74c3c;">134</div>
+        </div>
+        <div class="station-item">
+          <div class="station-name">T T Nagar</div>
+          <div class="station-bar-wrap"><div class="station-bar" style="width:47%;background:#f39c12;"></div></div>
+          <div class="station-aqi" style="color:#f39c12;">70</div>
+        </div>
+        <div class="station-item">
+          <div class="station-name">Sector D</div>
+          <div class="station-bar-wrap"><div class="station-bar" style="width:55%;background:#f39c12;"></div></div>
+          <div class="station-aqi" style="color:#f39c12;">82</div>
+        </div>
+        <div class="station-item">
+          <div class="station-name">City Average</div>
+          <div class="station-bar-wrap"><div class="station-bar" style="width:88%;background:#f39c12;"></div></div>
+          <div class="station-aqi" style="color:#f39c12;">132</div>
+        </div>
+        <div class="station-item">
+          <div class="station-name">Diwali Peak</div>
+          <div class="station-bar-wrap"><div class="station-bar" style="width:100%;background:#7f1d1d;"></div></div>
+          <div class="station-aqi" style="color:#e74c3c;">300+</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pollution Source Contribution</div>
+      <canvas id="sourceChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Annual trend table -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="card-title">Year-over-Year AQI Summary</div>
+    <table class="trend-table">
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th>Average AQI</th>
+          <th>Change</th>
+          <th>Status</th>
+          <th>Primary Pollutant</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>2020</td><td>99</td><td>—</td>
+          <td><span class="trend-badge" style="background:#1a3a1a;color:#2ecc71;">Baseline</span></td>
+          <td>PM10</td>
+        </tr>
+        <tr>
+          <td>2021</td><td>102</td><td style="color:#e74c3c;">↑ +3%</td>
+          <td><span class="trend-badge" style="background:#2a2a1a;color:#f1c40f;">Moderate</span></td>
+          <td>PM10</td>
+        </tr>
+        <tr>
+          <td>2022</td><td>112</td><td style="color:#e74c3c;">↑ +10%</td>
+          <td><span class="trend-badge" style="background:#2a1a1a;color:#e74c3c;">Worsening</span></td>
+          <td>PM2.5, PM10</td>
+        </tr>
+        <tr>
+          <td>2023</td><td>117</td><td style="color:#e74c3c;">↑ +4%</td>
+          <td><span class="trend-badge" style="background:#2a1a1a;color:#e74c3c;">Poor</span></td>
+          <td>PM2.5</td>
+        </tr>
+        <tr>
+          <td>2024</td><td>124</td><td style="color:#e74c3c;">↑ +6%</td>
+          <td><span class="trend-badge" style="background:#2a1a1a;color:#e74c3c;">Unhealthy</span></td>
+          <td>PM2.5, PM10</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Health Impact -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="card-title">Health Impact & Recommendations</div>
+    <div class="health-grid">
+      <div class="health-item">
+        <div class="health-icon">👶</div>
+        <div class="health-text">
+          <strong>Children & Elderly</strong>
+          Highly vulnerable. Limit outdoor activities. PM2.5 particles bypass natural defense and enter bloodstream directly.
+        </div>
+      </div>
+      <div class="health-item">
+        <div class="health-icon">🫁</div>
+        <div class="health-text">
+          <strong>Respiratory Risk</strong>
+          Frequent wheezing, chest tightness, and persistent cough reported at current AQI levels. Asthma patients at high risk.
+        </div>
+      </div>
+      <div class="health-item">
+        <div class="health-icon">🏃</div>
+        <div class="health-text">
+          <strong>Outdoor Exercise</strong>
+          Avoid strenuous outdoor activity. Morning hours (6–8am) show highest PM2.5 concentration — worst time to exercise outside.
+        </div>
+      </div>
+      <div class="health-item">
+        <div class="health-icon">🏠</div>
+        <div class="health-text">
+          <strong>Indoor Protection</strong>
+          Keep windows closed. Use air purifiers. Herbal teas and warm water help soothe respiratory tract during high pollution days.
+        </div>
+      </div>
+      <div class="health-item">
+        <div class="health-icon">🎆</div>
+        <div class="health-text">
+          <strong>Festival Warning</strong>
+          Diwali fireworks push AQI past 300 (Hazardous). Children under 14, pregnant women most vulnerable during this period.
+        </div>
+      </div>
+      <div class="health-item">
+        <div class="health-icon">💊</div>
+        <div class="health-text">
+          <strong>Medical Conditions</strong>
+          Those with pre-existing heart or lung conditions should consult doctors about activity levels during moderate-to-poor AQI days.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="source-note">
+    Data sources: IQAir, AQI.in, CPCB India, AQICN.org · Analysis by Sagar Shukla · Environmental Data Science Portfolio
+  </div>
+
+</div>
+
+<script>
+// Annual Trend Chart
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: ['2020', '2021', '2022', '2023', '2024'],
+    datasets: [{
+      label: 'Average AQI',
+      data: [99, 102, 112, 117, 124],
+      borderColor: '#e74c3c',
+      backgroundColor: 'rgba(231,76,60,0.1)',
+      borderWidth: 2.5,
+      pointBackgroundColor: '#e74c3c',
+      pointRadius: 5,
+      tension: 0.4,
+      fill: true
+    }, {
+      label: 'WHO Safe Limit (50)',
+      data: [50, 50, 50, 50, 50],
+      borderColor: '#2ecc71',
+      borderWidth: 1.5,
+      borderDash: [6, 4],
+      pointRadius: 0,
+      fill: false
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { labels: { color: '#7a9bb5', font: { size: 11 } } }
+    },
+    scales: {
+      x: { ticks: { color: '#7a9bb5' }, grid: { color: '#1e3a5f' } },
+      y: { ticks: { color: '#7a9bb5' }, grid: { color: '#1e3a5f' }, min: 0, max: 160 }
+    }
+  }
+});
+
+// Monthly Pattern
+new Chart(document.getElementById('monthlyChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    datasets: [{
+      label: 'Avg AQI',
+      data: [168, 152, 138, 120, 105, 82, 70, 68, 88, 142, 185, 172],
+      backgroundColor: [
+        '#e74c3c','#e74c3c','#f39c12','#f39c12','#f1c40f',
+        '#2ecc71','#2ecc71','#2ecc71','#f1c40f','#f39c12','#e74c3c','#e74c3c'
+      ],
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false }
+    },
+    scales: {
+      x: { ticks: { color: '#7a9bb5', font:{size:10} }, grid: { color: '#1e3a5f' } },
+      y: { ticks: { color: '#7a9bb5' }, grid: { color: '#1e3a5f' }, min: 0, max: 220 }
+    }
+  }
+});
+
+// Source Chart
+new Chart(document.getElementById('sourceChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Vehicle Emissions', 'Industrial', 'Construction Dust', 'Biomass Burning', 'Domestic', 'Other'],
+    datasets: [{
+      data: [34, 22, 18, 14, 8, 4],
+      backgroundColor: ['#e74c3c','#f39c12','#f1c40f','#e67e22','#3498db','#7a9bb5'],
+      borderColor: '#0a0f1e',
+      borderWidth: 2
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: { color: '#7a9bb5', font: { size: 11 }, padding: 12 }
+      }
+    }
+  }
+});
+</script>
+
+</body>
+</html>
